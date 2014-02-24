@@ -83,12 +83,16 @@ void learnFromDemo(const DMPTraj &demo,
 	int dims = demo.points[0].positions.size();
 	double tau = demo.times[n_pts-1];
 
+    //TEST
+    double base_width = 0.9;
+    double alpha = 0.5;
+
 	double *x_demo = new double[n_pts];
 	double *v_demo = new double[n_pts];
 	double *v_dot_demo = new double[n_pts];
 	double *f_domain = new double[n_pts];
 	double *f_targets = new double[n_pts];
-	FunctionApprox *f_approx = new FourierApprox(num_bases);
+    FunctionApprox *f_approx =new RadialApprox(num_bases,base_width,alpha); //new RadialApprox(num_bases,base_width,alpha); //new FourierApprox(num_bases);
 
 	//Compute the DMP weights for each DOF separately
 	for(int d=0; d<dims; d++){

@@ -51,3 +51,7 @@ add_dependencies(dmp dmp_generate_messages_cpp)
 add_executable(dmp_server nodes/dmp_server.cpp)
 target_link_libraries(dmp_server dmp)
 add_dependencies(dmp_server dmp_generate_messages_cpp)
+
+add_executable(encode_test_trajectory src/encode_test_trajectory.cpp)
+target_link_libraries(encode_test_trajectory ${catkin_LIBRARIES})
+add_dependencies(encode_test_trajectory dmp_generate_messages_cpp)

@@ -14,7 +14,7 @@ bool lfdCallback(LearnDMPFromDemo::Request  &req,
 bool planCallback(GetDMPPlan::Request  &req,
 			      GetDMPPlan::Response &res )
 {
-	generatePlan(active_dmp_list, req.x_0, req.x_dot_0, req.t_0, req.goal, req.goal_thresh,
+    generatePlan(active_dmp_list, req.x_0, req.x_dot_0, req.t_0, req.goal, req.goal_tresh,
 			     req.seg_length, req.tau, req.dt, req.integrate_iter, res.plan, res.at_goal);
 	return true;
 }

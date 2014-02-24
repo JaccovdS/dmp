@@ -15,7 +15,7 @@ float64[] goal
 # the predicted state is within the specified distance of the goal in all such dimensions.
 # Dimensions with values less than or equal to zero will be ignored.
 # Trajectory plan will always be at least tau seconds long.
-float64[] goal_thresh
+float64[] goal_tresh
 
 # The length of the requested plan segment in seconds. Set to -1 if plan until goal is desired.
 float64 seg_length
