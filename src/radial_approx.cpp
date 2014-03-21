@@ -36,6 +36,7 @@
 
 /**
   * \author Scott Niekum
+  * edited by Jacco van der Spek
   */
 
 
@@ -46,111 +47,154 @@ using namespace std;
 
 namespace dmp{
 
-RadialApprox::RadialApprox(int num_bases, double base_width, double alpha)
+RadialApprox::RadialApprox(int num_bases, double min_value, double max_value, double intersection_height)
 {
-	n_bases = num_bases;
-	features = new double[n_bases];
-	centers = new double[n_bases];
-	widths = new double[n_bases];
-	weights.resize(n_bases);
-	for(int i=0; i<n_bases; i++){
-		features[i] = 0;
-		centers[i] = exp((-alpha*i)/n_bases);
-		widths[i] = base_width * (1/exp((-alpha*i)/n_bases));
-	}
+    n_bases = num_bases;
+    min_value = min_value;
+    max_value = max_value;
+    intersection_height = intersection_height;
+    features = new double[n_bases];
+    centers = new double[n_bases];
+    widths = new double[n_bases];
+    weights.resize(n_bases);
+    for(int i=0; i<n_bases; i++){
+        features[i] = 0;
+    }
+    calcCentersAndWidths(min_value, max_value, intersection_height, centers, widths);
 }
 
 
-RadialApprox::RadialApprox(const vector<double> &w, double base_width, double alpha)
-{
-	weights = w;
-	n_bases = w.size();
-	features = new double[n_bases];
-		centers = new double[n_bases];
-		widths = new double[n_bases];
-		for(int i=0; i<n_bases; i++){
-			features[i] = 0;
-            centers[i] = exp((-alpha*i)/n_bases);  //((double)i)/((double)n_bases);  //exp((-alpha*i)/n_bases);
-            widths[i] =base_width * exp((-alpha*i)/n_bases);// base_width; //base_width * exp((-alpha*i)/n_bases);
-		}
-}
+//RadialApprox::RadialApprox(const vector<double> &w, double base_width, double alpha)
+//{
+//    weights = w;
+//    n_bases = w.size();
+//    features = new double[n_bases];
+//        centers = new double[n_bases];
+//        widths = new double[n_bases];
+//        for(int i=0; i<n_bases; i++){
+//            features[i] = 0;
+//            centers[i] = exp((-alpha*i)/n_bases);  //((double)i)/((double)n_bases);  //exp((-alpha*i)/n_bases);
+//            widths[i] =base_width * exp((-alpha*i)/n_bases);// base_width; //base_width * exp((-alpha*i)/n_bases);
+//        }
+//}
 
 
 RadialApprox::~RadialApprox()
 {
-	delete[] features;
-	delete[] centers;
-	delete[] widths;
+    delete[] features;
+    delete[] centers;
+    delete[] widths;
 }
 
 
 double RadialApprox::evalAt(double x)
 {
-	calcFeatures(x);
+    calcFeatures(x);
 
-	double wsum = 0;
-	for(int i=0; i<n_bases; i++){
-		wsum += features[i] * weights[i];
-	}
-	return wsum;
+    double wsum = 0;
+    for(int i=0; i<n_bases; i++){
+        wsum += features[i] * weights[i];
+    }
+    return wsum;
 }
 
 
 void RadialApprox::leastSquaresWeights(double *X, double *Y, int n_pts)
 {
-	MatrixXd D_mat = MatrixXd(n_pts,n_bases);
-	MatrixXd Y_mat = MatrixXd(n_pts,1);
+    MatrixXd D_mat = MatrixXd(n_pts,n_bases);
+    MatrixXd Y_mat = MatrixXd(n_pts,1);
 
-	//Calculate the design matrix
-	for(int i=0; i<n_pts; i++){
-		Y_mat(i,0) = Y[i];
-		calcFeatures(X[i]);
-		for(int j=0; j<n_bases; j++){
-			D_mat(i,j) = features[j];
-		}
-	}
+    //Calculate the design matrix
+    for(int i=0; i<n_pts; i++){
+        Y_mat(i,0) = Y[i];
+        calcFeatures(X[i]);
+        for(int j=0; j<n_bases; j++){
+            D_mat(i,j) = features[j];
+        }
+    }
 
-	//Calculate the least squares weights via projection onto the basis functions
-	MatrixXd w = pseudoinverse(D_mat.transpose() * D_mat) * D_mat.transpose() * Y_mat;
-	for(int i=0; i<n_bases; i++){
-		weights[i] = w(i,0);
-	}
+    //Calculate the least squares weights via projection onto the basis functions
+    MatrixXd w = pseudoinverse(D_mat.transpose() * D_mat) * D_mat.transpose() * Y_mat;
+    for(int i=0; i<n_bases; i++){
+        weights[i] = w(i,0);
+    }
 }
 
 
 void RadialApprox::calcFeatures(double x)
 {
-	double sum = 0;
-	for(int i=0; i<n_bases; i++){
-		features[i] = exp(-widths[i]*(x-centers[i])*(x-centers[i]));
-		sum += features[i];
-	}
-	for(int i=0; i<n_bases; i++){
-		features[i] /= sum;
-	}
+    double sum = 0;
+    for(int i=0; i<n_bases; i++){
+        features[i] = exp(-widths[i]*(x-centers[i])*(x-centers[i]));
+        sum += features[i];
+    }
+    for(int i=0; i<n_bases; i++){
+        features[i] /= sum;
+    }
 }
 
 
 MatrixXd RadialApprox::pseudoinverse(MatrixXd mat){
-	//Numpy uses 1e-15 by default.  I use 1e-10 just to be safe.
-	double precisionCutoff = 1e-10;
+    //Numpy uses 1e-15 by default.  I use 1e-10 just to be safe.
+    double precisionCutoff = 1e-10;
 
-	//Compute the SVD of the matrix
-	JacobiSVD<MatrixXd> svd(mat, ComputeThinU | ComputeThinV);
-	MatrixXd U = svd.matrixU();
-	MatrixXd V = svd.matrixV();
-	MatrixXd S = svd.singularValues();
+    //Compute the SVD of the matrix
+    JacobiSVD<MatrixXd> svd(mat, ComputeThinU | ComputeThinV);
+    MatrixXd U = svd.matrixU();
+    MatrixXd V = svd.matrixV();
+    MatrixXd S = svd.singularValues();
 
-	//Psuedoinvert the diagonal matrix of singular values
-	MatrixXd S_plus = MatrixXd::Zero(n_bases, n_bases);
-	for(int i=0; i<n_bases; i++){
-		if(S(i) > precisionCutoff){  //Cutoff to avoid huge inverted values for numerical stability
-			S_plus(i,i) = 1.0/S(i);
-		}
-	}
+    //Psuedoinvert the diagonal matrix of singular values
+    MatrixXd S_plus = MatrixXd::Zero(n_bases, n_bases);
+    for(int i=0; i<n_bases; i++){
+        if(S(i) > precisionCutoff){  //Cutoff to avoid huge inverted values for numerical stability
+            S_plus(i,i) = 1.0/S(i);
+        }
+    }
 
-	//Compute psuedoinverse of orginal matrix
-	return V * S_plus * U.transpose();
+    //Compute psuedoinverse of orginal matrix
+    return V * S_plus * U.transpose();
+}
+
+void RadialApprox::calcCentersAndWidths(double min_value, double max_value, double intersection_height, double *centers, double *widths){
+
+    //Compute centers based on min and max
+    VectorXd local_centers = VectorXd::LinSpaced(n_bases,min_value,max_value);
+    VectorXd local_widths(n_bases);
+
+    //Case there is just one basis function; it has to be normal width
+    if(n_bases == 1){
+        local_widths[0] = 1.0;
+    }
+    //Compute width for each basis function based on intersection height
+    else{
+        /*This comment is litteraly from
+         *https://github.com/stulp/dmpbbo/blob/master/src/functionapproximators/MetaParametersLWR.cpp
+         *It explains how the widths are determined
+         *
+         *Consider two neighbouring basis functions, exp(-0.5(x-c0)^2/w^2) and exp(-0.5(x-c1)^2/w^2)
+         *Assuming the widths are the same for both, they are certain to intersect at x = 0.5(c0+c1)
+         *And we want the activation at x to be 'intersection'. So y = exp(-0.5(x-c0)^2/w^2)
+         *   intersection = exp(-0.5((0.5(c0+c1))-c0)^2/w^2)
+         *   intersection = exp(-0.5((0.5*c1-0.5*c0)^2/w^2))
+         *   intersection = exp(-0.5((0.5*(c1-c0))^2/w^2))
+         *   intersection = exp(-0.5(0.25*(c1-c0)^2/w^2))
+         *   intersection = exp(-0.125((c1-c0)^2/w^2))
+         *   w = sqrt((c1-c0)^2/-8*ln(intersection))
+         */
+        for(int cntr =0; cntr<n_bases-1; cntr++){
+            double w = sqrt(pow(local_centers[cntr+1]-local_centers[cntr],2.0)/(-8.0*log(intersection_height)));
+            local_widths[cntr] = w;
+        }
+        //can't compute last width because there is no intersection with a "next" basis function
+        //so take the same width as the previous one
+        local_widths[n_bases-1] = local_widths[n_bases-2];
+    }
+    //Put the centers and widths in the correct arrays
+    for(int cntr = 0; cntr<n_bases; cntr++){
+        centers[cntr] = local_centers[cntr];
+        widths[cntr] = local_widths[cntr];
+    }
 }
 
 }

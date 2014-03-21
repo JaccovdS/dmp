@@ -43,46 +43,61 @@
 
 #include "dmp/function_approx.h"
 #include <iostream>
-#include <Eigen/Core>
-#include <Eigen/SVD>
-#include <Eigen/LU>
+#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/SVD>
+#include <vector>
 
 namespace dmp{
 
 /// Class for linear function approximation with the univariate Radial basis
 class RadialApprox : public FunctionApprox{
 public:
-	RadialApprox(int num_bases, double base_width, double alpha);
-	RadialApprox(const std::vector<double> &w, double base_width, double alpha);
-	virtual ~RadialApprox();
+    RadialApprox(int num_bases, double min_value, double max_value, double intersection_height);
+    //RadialApprox(const std::vector<double> &w, double base_width, double alpha);
+    virtual ~RadialApprox();
 
-	/**\brief Evaluate the function approximator at point x
-	 * \param x The point at which to evaluate
-	 * \return The scalar value of the function at x
-	 */
-	virtual double evalAt(double x);
+    /**\brief Evaluate the function approximator at point x
+     * \param x The point at which to evaluate
+     * \return The scalar value of the function at x
+     */
+    virtual double evalAt(double x);
 
-	/**\brief Computes the least squares weights given a set of data points
-	 * \param X A vector of the domain values of the points
-	 * \param Y A vector of the target values of the points
-	 */
-	virtual void leastSquaresWeights(double *X, double *Y, int n_pts);
+    /**\brief Computes the least squares weights given a set of data points
+     * \param X A vector of the domain values of the points
+     * \param Y A vector of the target values of the points
+     */
+    virtual void leastSquaresWeights(double *X, double *Y, int n_pts);
 
 private:
-	/**\brief Calculate the Radial basis features at point x
-	 * \param x The point at which to get features
-	 */
-	void calcFeatures(double x);
+    /**\brief Calculate the Radial basis features at point x
+     * \param x The point at which to get features
+     */
+    void calcFeatures(double x);
 
-	/**\brief Calculate the Moore-Penrose pseudoinverse of a matrix using SVD
-	 * \param mat The matrix to pseudoinvert
-	 * \return The pseudoinverted matrix
-	 */
-	Eigen::MatrixXd pseudoinverse(Eigen::MatrixXd mat);
+    /**\brief Calculate the Moore-Penrose pseudoinverse of a matrix using SVD
+     * \param mat The matrix to pseudoinvert
+     * \return The pseudoinverted matrix
+     */
+    Eigen::MatrixXd pseudoinverse(Eigen::MatrixXd mat);
 
-	double *features;  //Storage for a set of features
-	double *centers;   //Centers of RBFs
-	double *widths;    //Widths of RBFs
+    /**
+     * @brief Calculate the centers and the widths of the gaussian functions
+     * @param min_value minimum value of the function that is approximated
+     * @param max_value maximum value of the function that is approximated
+     * @param intersection_height the height at which the basis functions intersect
+     * @param centers the calculated centers
+     * @param widths the calculated widths
+     * This function is derived from the LWR approximator of https://github.com/stulp/dmpbbo/
+     * in order to make the determination of the widths and centers more convenient
+     */
+    void calcCentersAndWidths(double min_value, double max_value, double intersection_height, double *centers, double *widths);
+
+    double *features;  //Storage for a set of features
+    double *centers;   //Centers of RBFs
+    double *widths;    //Widths of RBFs
+    double min_value;
+    double max_value;
+    double intersection_height;
 
 };
 

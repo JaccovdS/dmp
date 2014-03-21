@@ -41,6 +41,7 @@
 
 #include "dmp/dmp.h"
 using namespace std;
+using namespace Eigen;
 
 namespace dmp{
 
@@ -56,7 +57,7 @@ double alpha = -log(0.01); //Ensures 99% phase convergence at t=tau
  */
 double calcPhase(double curr_time, double tau)
 {
-	return exp(-(alpha/tau)*curr_time);
+    return exp(-(alpha/tau)*curr_time);
 }
 
 
@@ -69,75 +70,84 @@ double calcPhase(double curr_time, double tau)
  * @param[out] dmp_list An n-dim list of DMPs that are all linked by a single canonical (phase) system
  */
 void learnFromDemo(const DMPTraj &demo,
-				   const vector<double> &k_gains,
-				   const vector<double> &d_gains,
-				   const int &num_bases,
-				   vector<DMPData> &dmp_list)
+                   const vector<double> &k_gains,
+                   const vector<double> &d_gains,
+                   const int &num_bases,
+                   vector<DMPData> &dmp_list)
 {
-	//Determine traj length and dim
-	int n_pts = demo.points.size();
-	if(n_pts < 1){
-		ROS_ERROR("Empty trajectory passed to learn_dmp_from_demo service!");
-		return;
-	}
-	int dims = demo.points[0].positions.size();
-	double tau = demo.times[n_pts-1];
+    //Determine traj length and dim
+    int n_pts = demo.points.size();
+    if(n_pts < 1){
+        ROS_ERROR("Empty trajectory passed to learn_dmp_from_demo service!");
+        return;
+    }
+    int dims = demo.points[0].positions.size();
+    double tau = demo.times[n_pts-1];
 
     //TEST
-    double base_width = 0.9;
-    double alpha = 0.5;
 
-	double *x_demo = new double[n_pts];
-	double *v_demo = new double[n_pts];
-	double *v_dot_demo = new double[n_pts];
-	double *f_domain = new double[n_pts];
-	double *f_targets = new double[n_pts];
-    FunctionApprox *f_approx =new RadialApprox(num_bases,base_width,alpha); //new RadialApprox(num_bases,base_width,alpha); //new FourierApprox(num_bases);
 
-	//Compute the DMP weights for each DOF separately
-	for(int d=0; d<dims; d++){
-		double curr_k = k_gains[d];
-		double curr_d = d_gains[d];
-		double x_0 = demo.points[0].positions[d];
-		double goal = demo.points[n_pts-1].positions[d];
-		x_demo[0] = demo.points[0].positions[d];
-		v_demo[0] = 0;
-		v_dot_demo[0] = 0;
+    double *x_demo = new double[n_pts];
+    double *v_demo = new double[n_pts];
+    double *v_dot_demo = new double[n_pts];
+    double *f_domain = new double[n_pts];
+    double *f_targets = new double[n_pts];
+    //FunctionApprox *f_approx = new FourierApprox(num_bases); //new RadialApprox(num_bases,base_width,alpha); //new FourierApprox(num_bases);
 
-		//Calculate the demonstration v and v dot by assuming constant acceleration over a time period
-		for(int i=1; i<n_pts; i++){
-			x_demo[i] = demo.points[i].positions[d];
-			double dx = x_demo[i] - x_demo[i-1];
-			double dt = demo.times[i] - demo.times[i-1];
-			v_demo[i] = dx/dt;
-			v_dot_demo[i] = (v_demo[i] - v_demo[i-1]) / dt;
-		}
+    //Compute the DMP weights for each DOF separately
+    for(int d=0; d<dims; d++){
+        double curr_k = k_gains[d];
+        double curr_d = d_gains[d];
+        double x_0 = demo.points[0].positions[d];
+        double goal = demo.points[n_pts-1].positions[d];
+        x_demo[0] = demo.points[0].positions[d];
+        v_demo[0] = 0;
+        v_dot_demo[0] = 0;
 
-		//Calculate the target pairs so we can solve for the weights
-		for(int i=0; i<n_pts; i++){
-			double phase = calcPhase(demo.times[i],tau);
-			f_domain[i] = demo.times[i]/tau;  //Scaled time is cleaner than phase for spacing reasons
-			f_targets[i] = ((tau*tau*v_dot_demo[i] + curr_d*tau*v_demo[i]) / curr_k) - (goal-x_demo[i]) + ((goal-x_0)*phase);
-			f_targets[i] /= phase; // Do this instead of having fxn approx scale its output based on phase
-		}
+        //Calculate the demonstration v and v dot by assuming constant acceleration over a time period
+        for(int i=1; i<n_pts; i++){
+            x_demo[i] = demo.points[i].positions[d];
+            double dx = x_demo[i] - x_demo[i-1];
+            double dt = demo.times[i] - demo.times[i-1];
+            v_demo[i] = dx/dt;
+            v_dot_demo[i] = (v_demo[i] - v_demo[i-1]) / dt;
+        }
 
-		//Solve for weights
-		f_approx->leastSquaresWeights(f_domain, f_targets, n_pts);
+        //Calculate the target pairs so we can solve for the weights
+        for(int i=0; i<n_pts; i++){
+            double phase = calcPhase(demo.times[i],tau);
+            f_domain[i] = demo.times[i]/tau;  //Scaled time is cleaner than phase for spacing reasons
+            f_targets[i] = ((tau*tau*v_dot_demo[i] + curr_d*tau*v_demo[i]) / curr_k) - (goal-x_demo[i]) + ((goal-x_0)*phase);
+            f_targets[i] /= phase; // Do this instead of having fxn approx scale its output based on phase
+        }
+        //min and max used for determination of centers and widths
+        //because it is the "time" vector the min is the first and max is the last
+        double min_value = f_domain[0];
+        double max_value = f_domain[n_pts-1];
 
-		//Create the DMP structures
-		DMPData *curr_dmp = new DMPData();
-		curr_dmp->weights = f_approx->getWeights();
-		curr_dmp->k_gain = curr_k;
-		curr_dmp->d_gain = curr_d;
-		dmp_list.push_back(*curr_dmp);
-	}
+        // TODO: move this outside the function --> parameter of this function
+        double intersection_height = 0.5;
 
-	delete[] x_demo;
-	delete[] v_demo;
-	delete[] v_dot_demo;
-	delete[] f_domain;
-	delete[] f_targets;
-	delete f_approx;
+        //create approximator
+        FunctionApprox *f_approx = new RadialApprox(num_bases,min_value,max_value,intersection_height);
+
+        //Solve for weights
+        f_approx->leastSquaresWeights(f_domain, f_targets, n_pts);
+
+        //Create the DMP structures
+        DMPData *curr_dmp = new DMPData();
+        curr_dmp->weights = f_approx->getWeights();
+        curr_dmp->k_gain = curr_k;
+        curr_dmp->d_gain = curr_d;
+        dmp_list.push_back(*curr_dmp);
+    }
+
+    delete[] x_demo;
+    delete[] v_demo;
+    delete[] v_dot_demo;
+    delete[] f_domain;
+    delete[] f_targets;
+    delete f_approx;
 }
 
 
@@ -158,124 +168,129 @@ void learnFromDemo(const DMPTraj &demo,
  * @param[out] at_goal True if the final time is greater than tau AND the planned position is within goal_thresh of the goal
  */
 void generatePlan(const vector<DMPData> &dmp_list,
-				  const vector<double> &x_0,
-				  const vector<double> &x_dot_0,
-				  const double &t_0,
-				  const vector<double> &goal,
-				  const vector<double> &goal_thresh,
-				  const double &seg_length,
-				  const double &tau,
-				  const double &total_dt,
-				  const int &integrate_iter,
-				  DMPTraj &plan,
-				  uint8_t &at_goal)
+                  const vector<double> &x_0,
+                  const vector<double> &x_dot_0,
+                  const double &t_0,
+                  const vector<double> &goal,
+                  const vector<double> &goal_thresh,
+                  const double &seg_length,
+                  const double &tau,
+                  const double &total_dt,
+                  const int &integrate_iter,
+                  DMPTraj &plan,
+                  uint8_t &at_goal)
 {
-	plan.points.clear();
-	plan.times.clear();
-	at_goal = false;
+    plan.points.clear();
+    plan.times.clear();
+    at_goal = false;
 
-	int dims = dmp_list.size();
-	int n_pts = 0;
-	double dt = total_dt / integrate_iter;
+    int dims = dmp_list.size();
+    int n_pts = 0;
+    double dt = total_dt / integrate_iter;
 
-	vector<double> *x_vecs, *x_dot_vecs;
-	vector<double> t_vec;
-	x_vecs = new vector<double>[dims];
-	x_dot_vecs = new vector<double>[dims];
-	FunctionApprox **f = new FunctionApprox*[dims];
+    //TEST
+    double base_width = 0.9;
+    double alpha = 0.2;
 
-	for(int i=0; i<dims; i++)
-		f[i] = new FourierApprox(dmp_list[i].weights);
-	
-	double t = 0;
-	double f_eval;
+    vector<double> *x_vecs, *x_dot_vecs;
+    vector<double> t_vec;
+    x_vecs = new vector<double>[dims];
+    x_dot_vecs = new vector<double>[dims];
+    FunctionApprox **f = new FunctionApprox*[dims];
 
-	//Plan for at least tau seconds.  After that, plan until goal_thresh is satisfied.
-	//Cut off if plan exceeds MAX_PLAN_LENGTH seconds, in case of overshoot / oscillation
-	//Only plan for seg_length seconds if specified
-	bool seg_end = false;
-	while(((t+t_0) < tau || (!at_goal && t<MAX_PLAN_LENGTH)) && !seg_end){
-		//Check if we've planned to the segment end yet
-		if(seg_length > 0){
-			if (t > seg_length) seg_end = true;
-		}
+    for(int i=0; i<dims; i++) {
+        f[i] =new FourierApprox(dmp_list[i].weights); //new RadialApprox(dmp_list[i].weights, base_width, alpha);//new FourierApprox(dmp_list[i].weights);
+    }
 
-		//Plan in each dimension
-		for(int i=0; i<dims; i++){
+    double t = 0;
+    double f_eval;
+
+    //Plan for at least tau seconds.  After that, plan until goal_thresh is satisfied.
+    //Cut off if plan exceeds MAX_PLAN_LENGTH seconds, in case of overshoot / oscillation
+    //Only plan for seg_length seconds if specified
+    bool seg_end = false;
+    while(((t+t_0) < tau || (!at_goal && t<MAX_PLAN_LENGTH)) && !seg_end){
+        //Check if we've planned to the segment end yet
+        if(seg_length > 0){
+            if (t > seg_length) seg_end = true;
+        }
+
+        //Plan in each dimension
+        for(int i=0; i<dims; i++){
             double x,v;
             if(n_pts==0){
                 x = x_0[i];
                 v = x_dot_0[i];
             }
-            else{			
+            else{
                 x = x_vecs[i][n_pts-1];
-			    v = x_dot_vecs[i][n_pts-1] * tau;
+                v = x_dot_vecs[i][n_pts-1] * tau;
             }
 
-			//Numerically integrate to get new x and v
-			for(int iter=0; iter<integrate_iter; iter++)
-			{
-				//Compute the phase and the log of the phase to assist with some numerical issues
-				//Then, evaluate the function approximator at the log of the phase
-				double s = calcPhase((t+t_0) + (dt*iter), tau);
-				double log_s = (t+t_0)/tau;
-				if(log_s >= 1.0){
-					f_eval = 0;
-				}
-				else{
-					f_eval = f[i]->evalAt(log_s) * s;
-				}
+            //Numerically integrate to get new x and v
+            for(int iter=0; iter<integrate_iter; iter++)
+            {
+                //Compute the phase and the log of the phase to assist with some numerical issues
+                //Then, evaluate the function approximator at the log of the phase
+                double s = calcPhase((t+t_0) + (dt*iter), tau);
+                double log_s = (t+t_0)/tau;
+                if(log_s >= 1.0){
+                    f_eval = 0;
+                }
+                else{
+                    f_eval = f[i]->evalAt(log_s) * s;
+                }
 
-				//Update v dot and x dot based on DMP differential equations
-				double v_dot = (dmp_list[i].k_gain*((goal[i]-x) - (goal[i]-x_0[i])*s + f_eval) - dmp_list[i].d_gain*v) / tau;
-				double x_dot = v/tau;
+                //Update v dot and x dot based on DMP differential equations
+                double v_dot = (dmp_list[i].k_gain*((goal[i]-x) - (goal[i]-x_0[i])*s + f_eval) - dmp_list[i].d_gain*v) / tau;
+                double x_dot = v/tau;
 
-				//Update state variables
-				v += v_dot * dt;
-				x += x_dot * dt;
-			}
+                //Update state variables
+                v += v_dot * dt;
+                x += x_dot * dt;
+            }
 
-			//Add current state to the plan
-			x_vecs[i].push_back(x);
-			x_dot_vecs[i].push_back(v/tau);
-		}
-		t += total_dt;
-		t_vec.push_back(t);
-		n_pts++;
+            //Add current state to the plan
+            x_vecs[i].push_back(x);
+            x_dot_vecs[i].push_back(v/tau);
+        }
+        t += total_dt;
+        t_vec.push_back(t);
+        n_pts++;
 
-		//If plan is at least minimum length, check to see if we are close enough to goal
-		if((t+t_0) >= tau){
-			at_goal = true;
-			for(int i=0; i<dims; i++){
-				if(goal_thresh[i] > 0){
-					if(fabs(x_vecs[i][n_pts-1] - goal[i]) > goal_thresh[i])
-						at_goal = false;
-				}
-			}
-		}
-	}
+        //If plan is at least minimum length, check to see if we are close enough to goal
+        if((t+t_0) >= tau){
+            at_goal = true;
+            for(int i=0; i<dims; i++){
+                if(goal_thresh[i] > 0){
+                    if(fabs(x_vecs[i][n_pts-1] - goal[i]) > goal_thresh[i])
+                        at_goal = false;
+                }
+            }
+        }
+    }
 
-	//Create a plan from the generated trajectories
-	plan.points.resize(n_pts);
-	for(int j=0; j<n_pts; j++){
-		plan.points[j].positions.resize(dims);
-		plan.points[j].velocities.resize(dims);
-	}
-	for(int i=0; i<dims; i++){
-		for(int j=0; j<n_pts; j++){
-			plan.points[j].positions[i] = x_vecs[i][j];
-			plan.points[j].velocities[i] = x_dot_vecs[i][j];
-		}
-	}
-	plan.times = t_vec;
+    //Create a plan from the generated trajectories
+    plan.points.resize(n_pts);
+    for(int j=0; j<n_pts; j++){
+        plan.points[j].positions.resize(dims);
+        plan.points[j].velocities.resize(dims);
+    }
+    for(int i=0; i<dims; i++){
+        for(int j=0; j<n_pts; j++){
+            plan.points[j].positions[i] = x_vecs[i][j];
+            plan.points[j].velocities[i] = x_dot_vecs[i][j];
+        }
+    }
+    plan.times = t_vec;
 
-	//Clean up
-	for(int i=0; i<dims; i++){
-		delete f[i];
-	}
-	delete[] f;
-	delete[] x_vecs;
-	delete[] x_dot_vecs;
+    //Clean up
+    for(int i=0; i<dims; i++){
+        delete f[i];
+    }
+    delete[] f;
+    delete[] x_vecs;
+    delete[] x_dot_vecs;
 }
 
 }
