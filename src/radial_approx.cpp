@@ -57,10 +57,11 @@ RadialApprox::RadialApprox(int num_bases, double min_value, double max_value, do
     centers = new double[n_bases];
     widths = new double[n_bases];
     weights.resize(n_bases);
+    calcCentersAndWidths(min_value, max_value, intersection_height, centers, widths);
     for(int i=0; i<n_bases; i++){
         features[i] = 0;
     }
-    calcCentersAndWidths(min_value, max_value, intersection_height, centers, widths);
+
 }
 
 
@@ -77,6 +78,18 @@ RadialApprox::RadialApprox(int num_bases, double min_value, double max_value, do
 //            widths[i] =base_width * exp((-alpha*i)/n_bases);// base_width; //base_width * exp((-alpha*i)/n_bases);
 //        }
 //}
+
+RadialApprox::RadialApprox(const vector<double> &w, double min_value, double max_value, double intersection_height){
+    weights = w;
+    n_bases = w.size();
+    features = new double[n_bases];
+    centers =  new double[n_bases];
+    widths =  new double[n_bases];
+    calcCentersAndWidths(min_value,max_value,intersection_height,centers,widths);
+    for(int i=0; i<n_bases; i++){
+        features[i] = 0;
+    }
+}
 
 
 RadialApprox::~RadialApprox()
@@ -95,29 +108,40 @@ double RadialApprox::evalAt(double x)
     for(int i=0; i<n_bases; i++){
         wsum += features[i] * weights[i];
     }
+    //cout << wsum << endl;
     return wsum;
 }
 
-
+/*
+ *Note that this function only works if the input parameters are vectors.
+ */
 void RadialApprox::leastSquaresWeights(double *X, double *Y, int n_pts)
 {
     MatrixXd D_mat = MatrixXd(n_pts,n_bases);
-    MatrixXd Y_mat = MatrixXd(n_pts,1);
+    MatrixXd inputs = MatrixXd(n_pts,1);
+    MatrixXd targets = MatrixXd(n_pts,1);
+    MatrixXd Gamma;
 
     //Calculate the design matrix
     for(int i=0; i<n_pts; i++){
-        Y_mat(i,0) = Y[i];
+        inputs(i,0) = X[i];
+        targets(i,0) = Y[i];
         calcFeatures(X[i]);
         for(int j=0; j<n_bases; j++){
             D_mat(i,j) = features[j];
         }
     }
 
-    //Calculate the least squares weights via projection onto the basis functions
-    MatrixXd w = pseudoinverse(D_mat.transpose() * D_mat) * D_mat.transpose() * Y_mat;
-    for(int i=0; i<n_bases; i++){
-        weights[i] = w(i,0);
+    //Calculate the least squares
+    for(int basis=0; basis<n_bases; basis++){
+        VectorXd gamma = D_mat.col(basis);
+        Gamma = gamma.asDiagonal();
+        VectorXd beta_num = inputs.transpose()*Gamma*targets;
+        //cout << beta_num(0) << endl;
+        VectorXd beta_den = inputs.transpose()*Gamma*inputs;
+        weights[basis] = beta_num(0)/beta_den(0);
     }
+
 }
 
 
@@ -125,7 +149,7 @@ void RadialApprox::calcFeatures(double x)
 {
     double sum = 0;
     for(int i=0; i<n_bases; i++){
-        features[i] = exp(-widths[i]*(x-centers[i])*(x-centers[i]));
+        features[i] = exp((-0.5*(x-centers[i])*(x-centers[i]))/(widths[i]*widths[i]));
         sum += features[i];
     }
     for(int i=0; i<n_bases; i++){
@@ -192,6 +216,8 @@ void RadialApprox::calcCentersAndWidths(double min_value, double max_value, doub
     }
     //Put the centers and widths in the correct arrays
     for(int cntr = 0; cntr<n_bases; cntr++){
+//        cout << "local_center " << cntr << " = " << local_centers[cntr] << endl;
+//        cout << "local_width " << cntr << " = " << local_widths[cntr] << endl;
         centers[cntr] = local_centers[cntr];
         widths[cntr] = local_widths[cntr];
     }

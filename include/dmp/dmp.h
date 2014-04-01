@@ -58,6 +58,7 @@ void learnFromDemo(const DMPTraj &demo,
                    const std::vector<double> &k_gains,
                    const std::vector<double> &d_gains,
                    const int &num_bases,
+                   const double &intersection_height,
                    std::vector<DMPData> &dmp_list);
 
 void generatePlan(const std::vector<DMPData> &dmp_list,
@@ -70,6 +71,7 @@ void generatePlan(const std::vector<DMPData> &dmp_list,
                   const double &tau,
                   const double &total_dt,
                   const int &integrate_iter,
+                  const double &intersection_height,
                   DMPTraj &plan,
                   uint8_t &at_goal);
 

@@ -73,6 +73,7 @@ void learnFromDemo(const DMPTraj &demo,
                    const vector<double> &k_gains,
                    const vector<double> &d_gains,
                    const int &num_bases,
+                   const double &intersection_height,
                    vector<DMPData> &dmp_list)
 {
     //Determine traj length and dim
@@ -92,7 +93,7 @@ void learnFromDemo(const DMPTraj &demo,
     double *v_dot_demo = new double[n_pts];
     double *f_domain = new double[n_pts];
     double *f_targets = new double[n_pts];
-    //FunctionApprox *f_approx = new FourierApprox(num_bases); //new RadialApprox(num_bases,base_width,alpha); //new FourierApprox(num_bases);
+//    FunctionApprox *f_approx = new FourierApprox(num_bases); //new RadialApprox(num_bases,base_width,alpha); //new FourierApprox(num_bases);
 
     //Compute the DMP weights for each DOF separately
     for(int d=0; d<dims; d++){
@@ -117,16 +118,14 @@ void learnFromDemo(const DMPTraj &demo,
         for(int i=0; i<n_pts; i++){
             double phase = calcPhase(demo.times[i],tau);
             f_domain[i] = demo.times[i]/tau;  //Scaled time is cleaner than phase for spacing reasons
-            f_targets[i] = ((tau*tau*v_dot_demo[i] + curr_d*tau*v_demo[i]) / curr_k) - (goal-x_demo[i]) + ((goal-x_0)*phase);
-            f_targets[i] /= phase; // Do this instead of having fxn approx scale its output based on phase
+            f_targets[i] = ((tau*v_dot_demo[i] + curr_d*v_demo[i]) / curr_k) - (goal-x_demo[i]) + ((goal-x_0)*phase);
+//            f_targets[i] /= phase; // Do this instead of having fxn approx scale its output based on phase
         }
+
         //min and max used for determination of centers and widths
         //because it is the "time" vector the min is the first and max is the last
         double min_value = f_domain[0];
         double max_value = f_domain[n_pts-1];
-
-        // TODO: move this outside the function --> parameter of this function
-        double intersection_height = 0.5;
 
         //create approximator
         FunctionApprox *f_approx = new RadialApprox(num_bases,min_value,max_value,intersection_height);
@@ -140,6 +139,7 @@ void learnFromDemo(const DMPTraj &demo,
         curr_dmp->k_gain = curr_k;
         curr_dmp->d_gain = curr_d;
         dmp_list.push_back(*curr_dmp);
+        delete f_approx;
     }
 
     delete[] x_demo;
@@ -147,7 +147,7 @@ void learnFromDemo(const DMPTraj &demo,
     delete[] v_dot_demo;
     delete[] f_domain;
     delete[] f_targets;
-    delete f_approx;
+//    delete f_approx;
 }
 
 
@@ -177,6 +177,7 @@ void generatePlan(const vector<DMPData> &dmp_list,
                   const double &tau,
                   const double &total_dt,
                   const int &integrate_iter,
+                  const double &intersection_height,
                   DMPTraj &plan,
                   uint8_t &at_goal)
 {
@@ -188,18 +189,23 @@ void generatePlan(const vector<DMPData> &dmp_list,
     int n_pts = 0;
     double dt = total_dt / integrate_iter;
 
-    //TEST
-    double base_width = 0.9;
-    double alpha = 0.2;
-
     vector<double> *x_vecs, *x_dot_vecs;
     vector<double> t_vec;
     x_vecs = new vector<double>[dims];
     x_dot_vecs = new vector<double>[dims];
     FunctionApprox **f = new FunctionApprox*[dims];
 
+    /*This is not neat at all but we know this is trought because we are using scaled time.
+     *A more neat option would be to adjust DMPData
+     *such that min and max value can be returned in dmp::LearnDMPFromDemo
+     *It is important that these are the same here and in dmp::LearnDMPFromDemo
+     *because they are needed for the determination of width and center of gaussian functions
+     */
+    double min_value = 0.0;
+    double max_value = 1.0;
+
     for(int i=0; i<dims; i++) {
-        f[i] =new FourierApprox(dmp_list[i].weights); //new RadialApprox(dmp_list[i].weights, base_width, alpha);//new FourierApprox(dmp_list[i].weights);
+        f[i] =new RadialApprox(dmp_list[i].weights, min_value, max_value, intersection_height);//new RadialApprox(dmp_list[i].weights, min_value, max_value, intersection_height); //new FourierApprox(dmp_list[i].weights);
     }
 
     double t = 0;
@@ -238,7 +244,8 @@ void generatePlan(const vector<DMPData> &dmp_list,
                     f_eval = 0;
                 }
                 else{
-                    f_eval = f[i]->evalAt(log_s) * s;
+                    f_eval = f[i]->evalAt(log_s) * log_s;
+//                    cout << f[i]->evalAt(log_s) * log_s << endl;
                 }
 
                 //Update v dot and x dot based on DMP differential equations

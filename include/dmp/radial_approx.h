@@ -53,7 +53,7 @@ namespace dmp{
 class RadialApprox : public FunctionApprox{
 public:
     RadialApprox(int num_bases, double min_value, double max_value, double intersection_height);
-    //RadialApprox(const std::vector<double> &w, double base_width, double alpha);
+    RadialApprox(const std::vector<double> &w, double min_value, double max_value, double intersection_height);
     virtual ~RadialApprox();
 
     /**\brief Evaluate the function approximator at point x
