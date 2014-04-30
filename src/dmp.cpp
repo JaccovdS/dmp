@@ -195,7 +195,7 @@ void generatePlan(const vector<DMPData> &dmp_list,
     x_dot_vecs = new vector<double>[dims];
     FunctionApprox **f = new FunctionApprox*[dims];
 
-    /*This is not neat at all but we know this is trought because we are using scaled time.
+    /*This is not neat at all but we know this is true because we are using scaled time.
      *A more neat option would be to adjust DMPData
      *such that min and max value can be returned in dmp::LearnDMPFromDemo
      *It is important that these are the same here and in dmp::LearnDMPFromDemo

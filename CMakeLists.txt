@@ -15,26 +15,26 @@ message_generation
 
 ## Declare ROS messages and services
 add_message_files(
- FILES 
- DMPData.msg 
- DMPPoint.msg 
+ FILES
+ DMPData.msg
+ DMPPoint.msg
  DMPTraj.msg
  )
 
 add_service_files(
- FILES 
- GetDMPPlan.srv 
- LearnDMPFromDemo.srv 
+ FILES
+ GetDMPPlan.srv
+ LearnDMPFromDemo.srv
  SetActiveDMP.srv
  )
 
 generate_messages(DEPENDENCIES
-	std_msgs
+        std_msgs
 )
 
 catkin_package(
 INCLUDE_DIRS include
-CATKIN_DEPENDS common_msgs image_common
+CATKIN_DEPENDS
 )
 
 
